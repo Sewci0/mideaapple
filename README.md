@@ -116,3 +116,13 @@ a change (`power,temp,mode,fan,swing`). It's HTTP + unauthenticated — LAN only
 - [ ] Add the ≥470 µF bulk cap; verify no brown-out during WiFi TX.
 - [ ] Flash (`pio run -t upload`), pair (466-37-726), test against the real AC;
       swap GPIO4/5 if the AC doesn't respond (TX/RX orientation).
+
+## Credits & license
+
+`mideaapple` is MIT-licensed — see [LICENSE](LICENSE). It's the glue between two
+MIT-licensed libraries that do all the real protocol/HAP work:
+
+- **[HomeSpan](https://github.com/HomeSpan/HomeSpan)** — HomeKit Accessory
+  Protocol for the Arduino-ESP32, © Gregg E. Berman.
+- **[dudanov/MideaUART](https://github.com/dudanov/MideaUART)** — the Midea UART
+  protocol (also the basis of ESPHome's `midea` component), © Sergey Dudanov.
