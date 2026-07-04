@@ -82,12 +82,32 @@ cd ~/projects/mideaapple
 ~/.venvs/pio/bin/pio device monitor   # serial log @115200
 ```
 
+**Toolchain notes:**
+- **Apple Silicon Macs:** the ESP32 RISC-V toolchain is an x86_64 binary — install
+  Rosetta 2 once (`softwareupdate --install-rosetta --agree-to-license`) or the
+  build fails with `riscv32-esp-elf-g++: Bad CPU type in executable`.
+- **HomeSpan is pinned to 1.9.1** (`platformio.ini`): the official PlatformIO
+  espressif32 platform ships arduino-esp32 core 2.0.17, but HomeSpan 2.x needs
+  core ≥ 3.3.0. To move to HomeSpan 2.x, switch `platform` to the pioarduino fork.
+
 ## Pair with HomeKit
 
 1. First boot has no WiFi — provision it: in the serial monitor type `W` and
    follow HomeSpan's prompt (or use its temporary setup hotspot).
 2. Home app → **Add Accessory** → **More options** → enter code **466-37-726**
    (HomeSpan's default; change it with the `S` serial command).
+
+## Update over the air (OTA)
+
+After the first USB flash, updates can go over WiFi (`enableOTA()` in `main.cpp`,
+default password `homespan-ota`). Grab the device IP from the serial log, then:
+
+```sh
+~/.venvs/pio/bin/pio run -e ota -t upload --upload-port 192.168.x.y
+```
+
+Change the OTA password with the `O` serial command, or hardcode it via
+`enableOTA("your-password")`.
 
 ## Web control panel
 
@@ -103,6 +123,27 @@ HomeKit's HeaterCooler can't show), target temp, fan, and swing. It writes to th
 same `AirConditioner` object HomeKit uses, so the Home app, the web page, and the
 AC's own remote stay in sync. `GET /state` returns JSON; `GET /set?<k>=<v>` applies
 a change (`power,temp,mode,fan,swing`). It's HTTP + unauthenticated — LAN only.
+
+## Troubleshooting
+
+**Serial commands** (type `?` in the monitor for the full HomeSpan menu):
+
+| Key | Action |
+|-----|--------|
+| `W` / `X` | set / erase WiFi credentials |
+| `S` | change the HomeKit pairing code |
+| `O` | change the OTA password |
+| `U` | unpair (delete all HomeKit controllers) |
+| `H` | delete pairing data + device ID |
+| `F` / `R` | factory reset / reboot |
+
+**Other issues:**
+- **Won't enter flashing mode:** hold `BOOT`, tap `RST`, release `BOOT`, retry.
+- **AC doesn't respond:** swap `MIDEA_RX_PIN`/`MIDEA_TX_PIN` (GPIO4↔5) — TX/RX
+  orientation varies by model; confirm the level shifter is powered on both rails
+  (HV = AC 5 V, LV = C3 3V3, common GND).
+- **Random reboots during WiFi use:** brown-out on the 300 mA rail — lower TX
+  power in `onWifiUp()` (`WIFI_POWER_5dBm` / `WIFI_POWER_2dBm`) or add a bulk cap.
 
 ## Status / TODO
 
