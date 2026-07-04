@@ -1,5 +1,7 @@
 # mideaapple
 
+[![build](https://github.com/Sewci0/mideaapple/actions/workflows/build.yml/badge.svg)](https://github.com/Sewci0/mideaapple/actions/workflows/build.yml)
+
 Native **HomeKit** firmware for a Midea air conditioner, running directly on an
 **ESP32-C3** — no Home Assistant, no ESPHome, no Pi bridge. The AC appears in the
 Apple Home app on its own.
