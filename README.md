@@ -48,16 +48,20 @@ so a **level shifter on the data lines is mandatory**. Typical USB-A pinout
 (⚠ still meter your specific unit to confirm):
 
 ```
-USB-A pin        signal        ESP32-C3
-  1  VBUS  ----  +5V     ----> 5V / VIN     (powers the board)
-  2  D-    ----  UART ?  ----> GPIO4 (RX)   MIDEA_RX_PIN   <- AC TX
-  3  D+    ----  UART ?  ----> GPIO5 (TX)   MIDEA_TX_PIN   -> AC RX
-  4  GND   ----  GND     ----> GND
+USB-A pin (wire)   signal            ESP32-C3
+  1 VBUS  (red)    +5 V              5V / VIN    (powers the board)
+  2 D-    (white)  AC TX, 5V TTL --> GPIO4 (RX)  MIDEA_RX_PIN   via shifter
+  3 D+    (green)  AC RX, 5V TTL <-- GPIO5 (TX)  MIDEA_TX_PIN   via shifter
+  4 GND   (black)  GND               GND
 ```
 
-D-/D+ carry the two UART lines; which is TX vs RX varies — if it doesn't talk,
-swap GPIO4/5. Route both through the level shifter (HV = AC 5 V side, LV = C3
-3V3, common GND) — **never** land a 5 V line on a C3 GPIO directly.
+Outer two pins = power (VBUS + GND); inner two = the UART (D-/D+). The
+D- = AC-TX / D+ = AC-RX mapping is the documented one for Midea/MrCool USB units,
+but orientation varies by model — if it doesn't talk, swap D-/D+ (or GPIO4/5 in
+`platformio.ini`). Route both data lines through the level shifter (HV = AC 5 V,
+LV = C3 3V3, common GND) — **never** land a 5 V line on a C3 GPIO directly. Meter
+first: the two outer pins read ~5 V (VBUS↔GND). Some models use a 4-pin JST-XH
+header instead of USB-A. (Pinout per the ESPHome midea docs + MrCool teardown.)
 
 ### Power — the 300 mA limit
 
