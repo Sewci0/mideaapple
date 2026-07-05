@@ -133,27 +133,22 @@ cd ~/projects/mideaapple
 2. Home app → **Add Accessory** → **More options** → enter code **466-37-726**
    (HomeSpan's default; change it with the `S` serial command).
 
-The firmware is a small HomeKit **bridge** exposing two accessories:
-
-**1. "Midea AC"** — one device, all controls grouped (HomeSpan 2.x names each
-service in place with `ConfiguredName`, so the switches read correctly instead of
-all showing "Midea AC"):
+Everything lands under **one** "Midea AC" device (HomeSpan 2.x names each service
+in place with `ConfiguredName`, so tiles read correctly instead of all showing
+"Midea AC" — no bridge, no scatter of separate accessories). Its tiles:
 
 | Tile | Service | Covers |
 |------|---------|--------|
-| Midea AC   | `HeaterCooler` | power, Auto/Heat/Cool, target temp, fan speed (low/med/high), swing |
-| Fan Only   | `Switch`       | Midea's fan-only mode (no HeaterCooler equivalent) |
-| Dry        | `Switch`       | Midea's dehumidify mode |
-| Fan Auto   | `Switch`       | fan **Auto** (the speed slider can't express it); power-gated so it reads off when the AC is off |
-
-**2. "Outdoor"** — the AC's outdoor-coil temperature as its **own** accessory
-(`TemperatureSensor`), so you can file it under an "Outside" room and use it as a
-clean automation trigger, instead of burying it inside the AC device.
+| Midea AC   | `HeaterCooler`      | power, Auto/Heat/Cool, target temp, fan speed (low/med/high), swing |
+| Outdoor    | `TemperatureSensor` | the AC's outdoor-coil temperature |
+| Fan Only   | `Switch`            | Midea's fan-only mode (no HeaterCooler equivalent) |
+| Dry        | `Switch`            | Midea's dehumidify mode |
+| Fan Auto   | `Switch`            | fan **Auto** (the speed slider can't express it); power-gated so it reads off when the AC is off |
 
 The onboard RGB LED (GPIO8) shows HomeSpan status at a glance — blinking while it
 searches for WiFi / waits to be paired, steady once it's connected and paired.
 
-> **Upgraded from an earlier build?** The bridge/HomeSpan-2.x topology changes the
+> **Upgraded from an earlier build?** The HomeSpan 2.x migration changes the
 > accessory identity — remove the old "Midea AC" from Home and re-add it with the
 > pairing code above.
 
