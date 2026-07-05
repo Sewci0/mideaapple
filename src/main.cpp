@@ -52,8 +52,8 @@ void onWifiUp() {
 void setup() {
   Serial.begin(115200);
 
-  prefs.begin("midea", true);                    // load saved pin orientation
-  g_pinsSwapped = prefs.getBool("swap", false);
+  prefs.begin("midea", false);                   // RW so first boot creates the
+  g_pinsSwapped = prefs.getBool("swap", false);  // namespace (avoids NOT_FOUND log)
   prefs.end();
   beginMidea();
   ac.setStream(&MideaSerial);
