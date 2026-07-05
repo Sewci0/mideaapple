@@ -35,6 +35,7 @@ body{font-family:system-ui,sans-serif;margin:0;background:#0b0f14;color:#e6edf3}
 .row{display:flex;justify-content:space-between;align-items:center;margin:10px 0}
 button,select{background:#21262d;color:#e6edf3;border:1px solid #30363d;border-radius:8px;padding:8px 12px;font-size:15px}
 button.on{background:#238636;border-color:#238636}input[type=range]{width:100%}
+input[type=range]:disabled{opacity:.35}
 .big{font-size:34px;font-weight:700}.muted{color:#8b949e;font-size:13px}</style></head><body><div class=wrap>
 <h1>Midea AC</h1>
 <div class=card><div class=row><span class=muted>Indoor</span><span class=big id=indoor>--</span></div>
@@ -51,16 +52,29 @@ button.on{background:#238636;border-color:#238636}input[type=range]{width:100%}
 <option value=high>High</option></select></div>
 <div class=row><b>Swing</b><button id=swing onclick="tsw()">--</button></div></div>
 <p class=muted>mideaapple &middot; native HomeKit + web</p></div><script>
-let S={};const j=u=>fetch(u).then(r=>r.json());
-function set(k,v){j('/set?'+k+'='+encodeURIComponent(v)).then(render)}
-function tog(){set('power',S.power?0:1)}function tsw(){set('swing',S.swing=='off'?'vertical':'off')}
-function render(s){S=s;indoor.textContent=s.indoor.toFixed(1)+'°';
+let S={},pend={},dbPower=null,dbCount=0,dispPower='0';const j=u=>fetch(u).then(r=>r.json());
+// state value in the string form /set uses, per control
+function sv(k,s){return k=='power'?(s.power?'1':'0'):k=='temp'?String(s.target):k=='swing'?s.swing:s[k];}
+// resolved display value: hold a just-set (optimistic) value until the AC confirms it, or ~10s passes
+function rv(k,s){let real=sv(k,s),p=pend[k];if(p){if(real==p.v||Date.now()>=p.t)delete pend[k];else return p.v;}return real;}
+// power: like rv, but after the optimistic hold, require 2 consecutive agreeing polls before flipping
+// (debounces the AC's mid-transition report flicker so the button doesn't blink on/off).
+function rvPower(s){let real=sv('power',s),p=pend.power;
+if(p){if(real==p.v){delete pend.power;dbPower=real;dbCount=0;return real;}if(Date.now()>=p.t)delete pend.power;else return p.v;}
+if(dbPower===null||real==dbPower){dbCount=0;dbPower=real;return real;}
+if(++dbCount>=2){dbCount=0;dbPower=real;return real;}return dbPower;}
+function set(k,v){pend[k]={v:String(v),t:Date.now()+10000};if(S.indoor!==undefined)render(S);j('/set?'+k+'='+encodeURIComponent(v));}
+function tog(){set('power',dispPower=='1'?0:1)}
+function tsw(){let c=rv('swing',S);set('swing',c=='off'?'vertical':'off')}
+function render(s){S=s;if(s.indoor===undefined)return;
+indoor.textContent=s.indoor.toFixed(1)+'°';
 outdoor.textContent=(s.outdoor?s.outdoor.toFixed(1):'--')+'°';
-power.textContent=s.power?'ON':'OFF';power.className=s.power?'on':'';
-mode.value=s.mode;fan.value=s.fan;
-if(document.activeElement!=temp){temp.value=s.target;tval.textContent=s.target}
-swing.textContent=s.swing=='off'?'OFF':'ON';swing.className=s.swing=='off'?'':'on';}
-const poll=()=>j('/state').then(render).catch(()=>{});setInterval(poll,2000);poll();
+dispPower=rvPower(s);power.textContent=dispPower=='1'?'ON':'OFF';power.className=dispPower=='1'?'on':'';
+let md=rv('mode',s);mode.value=md;fan.value=rv('fan',s);
+let sw=rv('swing',s);swing.textContent=sw=='off'?'OFF':'ON';swing.className=sw=='off'?'':'on';
+temp.disabled=(md=='fan_only');
+if(document.activeElement!=temp){let t=rv('temp',s);temp.value=t;tval.textContent=md=='fan_only'?'--':t}}
+const poll=()=>j('/state').then(render).catch(()=>{});setInterval(poll,1500);poll();
 </script></body></html>)HTML";
 
 static const char *modeStr(Mode m) {
@@ -148,9 +162,9 @@ static void handleSet() {
     else if (f == "high")   c.fanMode = FanMode::FAN_HIGH;
     else                    c.fanMode = FanMode::FAN_AUTO;
   }
-  if (server.hasArg("swing")) {
-    c.swingMode = (server.arg("swing") == "off") ? SwingMode::SWING_OFF
-                                                 : SwingMode::SWING_VERTICAL;
+  if (server.hasArg("swing")) {   // this AC has vertical louvers only
+    c.swingMode = (server.arg("swing") == "vertical") ? SwingMode::SWING_VERTICAL
+                                                      : SwingMode::SWING_OFF;
   }
   if (server.hasArg("swap")) mideaSetSwap(server.arg("swap").toInt() != 0);
   ac->control(c);

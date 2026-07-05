@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 640" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+  <defs>
+    <marker id="arrGray" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#6e7781"/></marker>
+    <marker id="arrGreen" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#2da44e"/></marker>
+  </defs>
+
+  <!-- card background: keeps the diagram readable on light or dark GitHub themes -->
+  <rect x="0" y="0" width="960" height="640" rx="14" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5"/>
+
+  <text x="480" y="42" text-anchor="middle" font-size="21" font-weight="700" fill="#1f2328">mideaapple — ESP32-C3 &#8646; Midea AC wiring</text>
+  <text x="480" y="66" text-anchor="middle" font-size="13" fill="#57606a">The AC's "USB-A" bay is really a 5 V UART (9600 8N1) + 5 V power. A level shifter on the data lines is mandatory.</text>
+
+  <!-- ================= 5V power bus (top) ================= -->
+  <line x1="230" y1="95" x2="705" y2="95" stroke="#e5484d" stroke-width="3"/>
+  <text x="240" y="88" font-size="12" font-weight="600" fill="#e5484d">+5 V (VBUS)</text>
+  <!-- taps -->
+  <line x1="230" y1="220" x2="230" y2="95" stroke="#e5484d" stroke-width="3"/>
+  <line x1="400" y1="215" x2="400" y2="95" stroke="#e5484d" stroke-width="3"/>
+  <polyline points="730,220 705,220 705,95" fill="none" stroke="#e5484d" stroke-width="3"/>
+
+  <!-- ================= GND bus (bottom) ================= -->
+  <line x1="230" y1="515" x2="730" y2="515" stroke="#24292f" stroke-width="3"/>
+  <text x="240" y="535" font-size="12" font-weight="600" fill="#24292f">GND (common — tie all grounds)</text>
+  <line x1="230" y1="405" x2="230" y2="515" stroke="#24292f" stroke-width="3"/>
+  <line x1="400" y1="395" x2="400" y2="515" stroke="#24292f" stroke-width="3"/>
+  <line x1="570" y1="395" x2="570" y2="515" stroke="#24292f" stroke-width="3"/>
+  <line x1="730" y1="410" x2="730" y2="515" stroke="#24292f" stroke-width="3"/>
+
+  <!-- ================= 3V3 reference (C3 -> shifter LV) ================= -->
+  <polyline points="730,240 650,240 650,215 570,215" fill="none" stroke="#e0a13a" stroke-width="3"/>
+  <text x="612" y="234" font-size="11" font-weight="600" fill="#c98a1e">3.3 V</text>
+
+  <!-- ================= data channel 1: D- = AC TX -> C3 RX (GPIO7) ================= -->
+  <polyline points="230,270 400,270" fill="none" stroke="#6e7781" stroke-width="3" marker-end="url(#arrGray)"/>
+  <polyline points="570,270 650,270 650,295 730,295" fill="none" stroke="#6e7781" stroke-width="3" marker-end="url(#arrGray)"/>
+  <text x="300" y="262" text-anchor="middle" font-size="11" fill="#57606a">white · AC TX · 5 V</text>
+  <text x="660" y="288" font-size="11" fill="#57606a">3.3 V &#8594; RX</text>
+
+  <!-- ================= data channel 2: D+ = AC RX <- C3 TX (GPIO10) ================= -->
+  <polyline points="400,335 230,335" fill="none" stroke="#2da44e" stroke-width="3" marker-end="url(#arrGreen)"/>
+  <polyline points="730,350 650,350 650,335 570,335" fill="none" stroke="#2da44e" stroke-width="3" marker-end="url(#arrGreen)"/>
+  <text x="300" y="327" text-anchor="middle" font-size="11" fill="#2f7d43">green · AC RX · 5 V</text>
+  <text x="612" y="368" font-size="11" fill="#2f7d43">3.3 V &#8594; TX</text>
+
+  <!-- ================= AC dongle port ================= -->
+  <rect x="60" y="150" width="170" height="300" rx="10" fill="#fff3f0" stroke="#f0a58f" stroke-width="2"/>
+  <text x="145" y="174" text-anchor="middle" font-size="14" font-weight="700" fill="#8a3b22">AC Wi-Fi dongle</text>
+  <text x="145" y="190" text-anchor="middle" font-size="11" fill="#a15a3f">(USB-A shell, ~300 mA)</text>
+  <g font-size="12.5" fill="#1f2328">
+    <circle cx="230" cy="220" r="5" fill="#e5484d"/><text x="218" y="224" text-anchor="end">1 · VBUS</text>
+    <circle cx="230" cy="270" r="5" fill="#6e7781"/><text x="218" y="274" text-anchor="end">2 · D&#8722;</text>
+    <circle cx="230" cy="335" r="5" fill="#2da44e"/><text x="218" y="339" text-anchor="end">3 · D+</text>
+    <circle cx="230" cy="405" r="5" fill="#24292f"/><text x="218" y="409" text-anchor="end">4 · GND</text>
+  </g>
+
+  <!-- ================= level shifter ================= -->
+  <rect x="400" y="185" width="170" height="230" rx="10" fill="#eef6ff" stroke="#7fb2f0" stroke-width="2"/>
+  <text x="485" y="212" text-anchor="middle" font-size="14" font-weight="700" fill="#1f4e8a">Level shifter</text>
+  <text x="450" y="235" text-anchor="middle" font-size="10.5" fill="#4a6a95">HV</text>
+  <text x="520" y="235" text-anchor="middle" font-size="10.5" fill="#4a6a95">LV</text>
+  <g font-size="11.5" fill="#1f2328">
+    <circle cx="400" cy="215" r="5" fill="#e5484d"/><text x="410" y="219">HV</text>
+    <circle cx="400" cy="270" r="5" fill="#6e7781"/><text x="410" y="274">HV1</text>
+    <circle cx="400" cy="335" r="5" fill="#2da44e"/><text x="410" y="339">HV2</text>
+    <circle cx="400" cy="395" r="5" fill="#24292f"/><text x="410" y="399">GND</text>
+    <circle cx="570" cy="215" r="5" fill="#e0a13a"/><text x="560" y="219" text-anchor="end">LV</text>
+    <circle cx="570" cy="270" r="5" fill="#6e7781"/><text x="560" y="274" text-anchor="end">LV1</text>
+    <circle cx="570" cy="335" r="5" fill="#2da44e"/><text x="560" y="339" text-anchor="end">LV2</text>
+    <circle cx="570" cy="395" r="5" fill="#24292f"/><text x="560" y="399" text-anchor="end">GND</text>
+  </g>
+
+  <!-- ================= ESP32-C3 ================= -->
+  <rect x="730" y="150" width="170" height="300" rx="10" fill="#eefaf0" stroke="#7fce8f" stroke-width="2"/>
+  <text x="815" y="174" text-anchor="middle" font-size="14" font-weight="700" fill="#1f6b34">ESP32-C3</text>
+  <text x="815" y="190" text-anchor="middle" font-size="11" fill="#3f7d52">(3.3 V logic — not 5 V safe)</text>
+  <g font-size="12.5" fill="#1f2328">
+    <circle cx="730" cy="220" r="5" fill="#e5484d"/><text x="742" y="224">5V / VIN</text>
+    <circle cx="730" cy="240" r="5" fill="#e0a13a"/><text x="742" y="244">3V3</text>
+    <circle cx="730" cy="295" r="5" fill="#6e7781"/><text x="742" y="299">GPIO7  (RX)</text>
+    <circle cx="730" cy="350" r="5" fill="#2da44e"/><text x="742" y="354">GPIO10 (TX)</text>
+    <circle cx="730" cy="410" r="5" fill="#24292f"/><text x="742" y="414">GND</text>
+  </g>
+  <text x="815" y="440" text-anchor="middle" font-size="10" fill="#3f7d52">MIDEA_RX_PIN=7 · MIDEA_TX_PIN=10</text>
+
+  <!-- ================= notes ================= -->
+  <g font-size="12" fill="#57606a">
+    <text x="30" y="575">• Route ONLY D&#8722;/D+ through the shifter (HV = AC 5 V, LV = C3 3V3, tie all grounds). Never land a 5 V line on a C3 GPIO directly.</text>
+    <text x="30" y="597">• D&#8722;/D+ orientation varies by model. If the AC won't talk, swap the two data wires — or flip it in firmware with GET /set?swap=1 (persisted, no reflash).</text>
+    <text x="30" y="619">• Meter your unit first: outer pins (1&amp;4) read ~5 V VBUS&#8646;GND. The bay sources ~300 mA, so the firmware auto-tunes Wi-Fi TX power to avoid brownout.</text>
+  </g>
+</svg>

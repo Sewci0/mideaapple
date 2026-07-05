@@ -3,12 +3,12 @@
 #include <Appliance/AirConditioner/AirConditioner.h>
 
 // ---------------------------------------------------------------------------
-//  Midea AC  <->  HomeKit HeaterCooler, running natively on the ESP32-C3.
+//  Midea AC  <->  HomeKit, running natively on the ESP32-C3.
 //  API verified against dudanov/MideaUART 1.1.9.
 //
-//  HeaterCooler can only express Auto/Heat/Cool. Midea's Dry and Fan-only modes
-//  have no HeaterCooler equivalent — add a separate Fan service / mode Switch
-//  later if you want them exposed.
+//  HeaterCooler models Auto/Heat/Cool + temp + fan speed + swing. Midea's Dry
+//  and Fan-only modes (and fan Auto) have no HeaterCooler equivalent, so they're
+//  exposed as extra Switch services; outdoor temp as its own TemperatureSensor.
 // ---------------------------------------------------------------------------
 
 using dudanov::midea::ac::AirConditioner;
@@ -27,18 +27,34 @@ using dudanov::midea::ac::Control;
 #define HK_HEATING  2
 #define HK_COOLING  3
 
+// After any HomeKit write, pause ALL mirroring briefly so the 1 Hz sync can't push the AC's
+// not-yet-applied state back over the value the user just set (the snap-back glitch). Shared across
+// every service so a write to one isn't clobbered by another service's mirror loop.
+inline uint32_t g_acHold = 0;
+static inline void acHold()       { g_acHold = millis() + 2500; }
+static inline bool acMirrorHeld() { return millis() < g_acHold; }
+
+static FanMode fanFromPercent(int pct) {
+  if (pct <= 33) return FanMode::FAN_LOW;
+  if (pct <= 66) return FanMode::FAN_MEDIUM;
+  return FanMode::FAN_HIGH;
+}
+static int fanToPercent(FanMode f) {
+  if (f == FanMode::FAN_LOW)    return 33;
+  if (f == FanMode::FAN_MEDIUM) return 66;
+  if (f == FanMode::FAN_HIGH)   return 100;
+  return -1;   // AUTO/SILENT/TURBO don't map onto the 3-speed slider
+}
+
 struct MideaHeaterCooler : Service::HeaterCooler {
   AirConditioner *ac;
 
-  // Required characteristics for a HeaterCooler
   Characteristic::Active                      active{0, true};
   Characteristic::CurrentTemperature          curTemp{22, true};
   Characteristic::CurrentHeaterCoolerState    curState{HK_INACTIVE, true};
   Characteristic::TargetHeaterCoolerState     tgtState{HK_COOL, true};
-  // Setpoints (Midea has one setpoint; both HK thresholds drive it)
   Characteristic::CoolingThresholdTemperature coolTo{24, true};
   Characteristic::HeatingThresholdTemperature heatTo{20, true};
-  // Optional niceties
   Characteristic::RotationSpeed               fan{66, true};
   Characteristic::SwingMode                   swing{0, true};
 
@@ -71,6 +87,7 @@ struct MideaHeaterCooler : Service::HeaterCooler {
 
     ac->setPowerState(active.getNewVal() != 0);   // power on/off is separate from mode
     ac->control(ctl);                             // send the delta
+    acHold();                                     // don't mirror stale state back over this write
     return true;
   }
 
@@ -78,9 +95,10 @@ struct MideaHeaterCooler : Service::HeaterCooler {
   void loop() override {
     if (millis() - lastPush < 1000) return;
     lastPush = millis();
+    if (acMirrorHeld()) return;                // just wrote — let the AC apply before mirroring
 
     float indoor = ac->getIndoorTemp();
-    if (indoor > 0) curTemp.setVal(indoor);   // 0 = AC hasn't reported yet
+    if (indoor > 0) curTemp.setVal(indoor);    // 0 = AC hasn't reported yet
 
     bool power = ac->getPowerState();
     active.setVal(power ? 1 : 0);
@@ -97,12 +115,80 @@ struct MideaHeaterCooler : Service::HeaterCooler {
 
     if (m == Mode::MODE_HEAT)      tgtState.setVal(HK_HEAT);
     else if (m == Mode::MODE_COOL) tgtState.setVal(HK_COOL);
-    else                           tgtState.setVal(HK_AUTO);
-  }
+    else                           tgtState.setVal(HK_AUTO);   // Dry/Fan-only fall back to Auto here
 
-  static FanMode fanFromPercent(int pct) {
-    if (pct <= 33) return FanMode::FAN_LOW;
-    if (pct <= 66) return FanMode::FAN_MEDIUM;
-    return FanMode::FAN_HIGH;
+    int pct = fanToPercent(ac->getFanMode());  // mirror fan/swing back (so remote changes show up);
+    if (pct >= 0) fan.setVal(pct);             // AUTO can't map to the slider -> shown via Fan Auto
+    swing.setVal(ac->getSwingMode() != SwingMode::SWING_OFF ? 1 : 0);
   }
 };
+
+// Outdoor temperature as its own HomeKit sensor tile.
+struct MideaOutdoorTemp : Service::TemperatureSensor {
+  AirConditioner *ac;
+  Characteristic::CurrentTemperature temp{0, true};
+  uint32_t lastPush = 0;
+
+  explicit MideaOutdoorTemp(AirConditioner *ac) : Service::TemperatureSensor(), ac(ac) {
+    temp.setRange(-50, 80);
+    new Characteristic::ConfiguredName("Outdoor");
+  }
+  void loop() override {
+    if (millis() - lastPush < 2000) return;
+    lastPush = millis();
+    float o = ac->getOutdoorTemp();
+    if (o != 0) temp.setVal(o);                // 0 = no reading yet
+  }
+};
+
+// A switch for a Midea mode the HeaterCooler can't express (Dry, Fan-only). On -> that mode;
+// Off -> revert to Cool. It mirrors the AC's actual mode, so the mode switches stay exclusive.
+struct MideaModeSwitch : Service::Switch {
+  AirConditioner *ac;
+  Mode mode;
+  Characteristic::On on{false, true};
+  uint32_t lastPush = 0;
+
+  MideaModeSwitch(AirConditioner *ac, Mode mode, const char *name)
+      : Service::Switch(), ac(ac), mode(mode) {
+    new Characteristic::ConfiguredName(name);
+  }
+  boolean update() override {
+    Control ctl;
+    if (on.getNewVal()) { ctl.mode = mode; ac->setPowerState(true); }
+    else                  ctl.mode = Mode::MODE_COOL;   // leaving this mode -> Cool
+    ac->control(ctl);
+    acHold();
+    return true;
+  }
+  void loop() override {
+    if (millis() - lastPush < 1000) return;
+    lastPush = millis();
+    if (acMirrorHeld()) return;
+    on.setVal(ac->getPowerState() && ac->getMode() == mode);
+  }
+};
+
+// Switch for fan Auto (the HeaterCooler speed slider can't show "auto"). Off -> a manual speed.
+struct MideaFanAutoSwitch : Service::Switch {
+  AirConditioner *ac;
+  Characteristic::On on{false, true};
+  uint32_t lastPush = 0;
+
+  explicit MideaFanAutoSwitch(AirConditioner *ac) : Service::Switch(), ac(ac) {
+    new Characteristic::ConfiguredName("Fan Auto");
+  }
+  boolean update() override {
+    Control ctl;
+    ctl.fanMode = on.getNewVal() ? FanMode::FAN_AUTO : FanMode::FAN_MEDIUM;
+    ac->control(ctl);
+    acHold();
+    return true;
+  }
+  void loop() override {
+    if (millis() - lastPush < 1000) return;
+    lastPush = millis();
+    if (acMirrorHeld()) return;
+    on.setVal(ac->getPowerState() && ac->getFanMode() == FanMode::FAN_AUTO);   // off when AC is off,
+  }                                                                            // so it doesn't make
+};                                                                             // the device read "on"

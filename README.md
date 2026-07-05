@@ -44,25 +44,32 @@ The dongle bay looks like a USB-A port, but on Midea ACs it is **not real USB** 
 it's the WiFi-dongle interface: **5 V power on VBUS and a 5 V TTL UART (9600 8N1)
 on the data pins.** The UART is **5 V logic** (per the ESPHome midea docs — it
 "does not appear to work with 3.3 V"), and ESP32-C3 GPIOs are **not 5 V tolerant**,
-so a **level shifter on the data lines is mandatory**. Typical USB-A pinout
-(⚠ still meter your specific unit to confirm):
+so a **level shifter on the data lines is mandatory**.
+
+![ESP32-C3 ⇄ Midea AC wiring diagram](docs/wiring.svg)
+
+Typical USB-A pinout (⚠ still meter your specific unit to confirm):
 
 ```
 USB-A pin (wire)   signal            ESP32-C3
   1 VBUS  (red)    +5 V              5V / VIN    (powers the board)
-  2 D-    (white)  AC TX, 5V TTL --> GPIO4 (RX)  MIDEA_RX_PIN   via shifter
-  3 D+    (green)  AC RX, 5V TTL <-- GPIO5 (TX)  MIDEA_TX_PIN   via shifter
+  2 D-    (white)  AC TX, 5V TTL --> GPIO7  (RX)  MIDEA_RX_PIN   via shifter
+  3 D+    (green)  AC RX, 5V TTL <-- GPIO10 (TX)  MIDEA_TX_PIN   via shifter
   4 GND   (black)  GND               GND
 ```
 
 Outer two pins = power (VBUS + GND); inner two = the UART (D-/D+). The
 D- = AC-TX / D+ = AC-RX mapping is the documented one for Midea/MrCool USB units,
 but orientation varies by model — if it doesn't talk, flip the **UART pins**
-toggle in the web panel (runtime swap, persisted, no reflash) or physically swap
-D-/D+. Route both data lines through the level shifter (HV = AC 5 V,
+toggle via the API (runtime swap, persisted, no reflash — `GET /set?swap=1`) or
+physically swap D-/D+. Route both data lines through the level shifter (HV = AC 5 V,
 LV = C3 3V3, common GND) — **never** land a 5 V line on a C3 GPIO directly. Meter
 first: the two outer pins read ~5 V (VBUS↔GND). Some models use a 4-pin JST-XH
 header instead of USB-A. (Pinout per the ESPHome midea docs + MrCool teardown.)
+
+GPIO7/10 are the defaults (set in `platformio.ini` as `MIDEA_RX_PIN` /
+`MIDEA_TX_PIN`); both are safe general-purpose pins — clear of the strapping pins
+(2/8/9), the USB-JTAG pair (18/19), and the console UART0 (20/21).
 
 ### Power — the 300 mA limit & WiFi TX auto-tuning
 
@@ -110,13 +117,14 @@ cd ~/projects/mideaapple
 - **Apple Silicon Macs:** the ESP32 RISC-V toolchain is an x86_64 binary — install
   Rosetta 2 once (`softwareupdate --install-rosetta --agree-to-license`) or the
   build fails with `riscv32-esp-elf-g++: Bad CPU type in executable`.
-- **Pinned toolchain** (`platformio.ini`): `platform = espressif32@6.11.0`
-  (arduino-esp32 core 2.0.17) for reproducible builds, plus **HomeSpan 1.9.1**
-  (HomeSpan 2.x needs core ≥ 3.3.0). To move to HomeSpan 2.x, switch `platform`
-  to the pioarduino fork.
+- **Platform** (`platformio.ini`): the [pioarduino](https://github.com/pioarduino/platform-espressif32)
+  community fork of `platform-espressif32`, which ships **arduino-esp32 core 3.x**
+  (ESP-IDF 5.x). That core is what **HomeSpan 2.x** requires — its per-service
+  `ConfiguredName` support is what lets us name every tile inside one grouped AC
+  device. `platform = .../stable/...` tracks the latest; pin a versioned release
+  URL for reproducible builds.
 - **Flaky USB flashing?** The C3's native USB-JTAG can drop mid-flash if a serial
-  monitor holds the port — close the monitor first. If esptool still can't sync,
-  `--before usb_reset --no-stub` is more reliable than the default stub loader.
+  monitor holds the port — close the monitor first, then re-run `pio run -t upload`.
 
 ## Pair with HomeKit
 
@@ -125,8 +133,23 @@ cd ~/projects/mideaapple
 2. Home app → **Add Accessory** → **More options** → enter code **466-37-726**
    (HomeSpan's default; change it with the `S` serial command).
 
+Everything lands under **one** "Midea AC" device (HomeSpan 2.x names each service
+in place, so no bridge / no scatter of separate accessories). Its tiles:
+
+| Tile | Service | Covers |
+|------|---------|--------|
+| Midea AC   | `HeaterCooler`      | power, Auto/Heat/Cool, target temp, fan speed (low/med/high), swing |
+| Outdoor    | `TemperatureSensor` | the AC's outdoor-coil temperature |
+| Fan Only   | `Switch`            | Midea's fan-only mode (no HeaterCooler equivalent) |
+| Dry        | `Switch`            | Midea's dehumidify mode |
+| Fan Auto   | `Switch`            | fan **Auto** (the speed slider can't express it); power-gated so it reads off when the AC is off |
+
 The onboard RGB LED (GPIO8) shows HomeSpan status at a glance — blinking while it
 searches for WiFi / waits to be paired, steady once it's connected and paired.
+
+> **Upgraded from an earlier build?** The HomeSpan 2.x migration changes the
+> accessory identity — remove the old "Midea AC" from Home and re-add it with the
+> pairing code above.
 
 ## Update over the air (OTA)
 
@@ -192,18 +215,19 @@ it's deliberately kept out of the GUI to avoid an accidental tap breaking comms.
 ## Status / TODO
 
 - [x] Board: ESP32-C3 (small + low avg draw for the 300 mA bay).
-- [x] Firmware builds green: HomeKit HeaterCooler + web control panel. API
-      verified against real MideaUART/HomeSpan headers (~64% flash, 16% RAM).
-- [x] Dry / Fan-only modes exposed via the web UI (HeaterCooler can't show them).
+- [x] Firmware builds green on arduino-esp32 core 3.x / HomeSpan 2.x.
+- [x] Wired to a real AC on GPIO7/10 (via level shifter) — indoor/outdoor temps
+      and controls confirmed working end-to-end.
+- [x] HomeKit: one grouped "Midea AC" device with named tiles — HeaterCooler,
+      Outdoor temp, Fan Only, Dry, Fan Auto (each a `ConfiguredName`d service).
+- [x] Dry / Fan-only modes exposed via the web UI too (HeaterCooler can't show them).
 - [x] WiFi TX-power auto-tuning (dodges the 300 mA-rail brownout; picks the
       strongest-link level, no per-board hardcoding) + onboard status LED (GPIO8).
-- [ ] Meter the USB-A pins: confirm 5 V on VBUS, UART TTL is 3.3 V (not 5 V),
-      and which data pin is the AC's TX.
-- [ ] Confirm AC model has this UART dongle bay (not IR-only) & MideaUART support.
+- [x] Optimistic web-UI + HomeKit mirroring (hold-until-confirmed + debounce) so
+      buttons don't snap back mid-transition.
+- [ ] Confirm compatibility on more AC models (UART dongle bay, not IR-only).
 - [ ] Optional: ≥470 µF bulk cap for more TX-power/range headroom (auto-tune
       already handles the brownout without it).
-- [ ] Flash (`pio run -t upload`), pair (466-37-726), test against the real AC;
-      swap GPIO4/5 if the AC doesn't respond (TX/RX orientation).
 
 ## Credits & license
 

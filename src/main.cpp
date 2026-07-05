@@ -6,10 +6,10 @@
 // AC UART. Midea's WiFi-dongle port runs 9600 8N1. The C3 has no Serial2, so we
 // drive a dedicated UART1 on two safe GPIOs (set in platformio.ini).
 #ifndef MIDEA_RX_PIN
-#define MIDEA_RX_PIN 4    // ESP32-C3 in  <-  AC TX
+#define MIDEA_RX_PIN 7    // ESP32-C3 in  <-  AC TX  (default; overridden in platformio.ini)
 #endif
 #ifndef MIDEA_TX_PIN
-#define MIDEA_TX_PIN 5    // ESP32-C3 out ->  AC RX
+#define MIDEA_TX_PIN 10   // ESP32-C3 out ->  AC RX
 #endif
 
 AirConditioner ac;
@@ -174,6 +174,9 @@ void setup() {
   homeSpan.enableOTA();         // OTA reflash once it's on WiFi
   homeSpan.begin(Category::AirConditioners, "Midea AC");
 
+  // ONE accessory with all services. On HomeSpan 2.x (core 3.x) each service carries a
+  // ConfiguredName, so Home labels each tile ("Outdoor", "Dry", "Fan Only", "Fan Auto") while
+  // keeping them grouped under the single "Midea AC" device — no bridge, no separate devices.
   new SpanAccessory();
     new Service::AccessoryInformation();
       new Characteristic::Identify();
@@ -181,6 +184,10 @@ void setup() {
       new Characteristic::Model("mideaapple");
       new Characteristic::Name("Midea AC");
     new MideaHeaterCooler(&ac);
+    new MideaOutdoorTemp(&ac);                          // outdoor temp (named "Outdoor")
+    new MideaModeSwitch(&ac, Mode::MODE_FAN_ONLY, "Fan Only");   // modes HeaterCooler can't hold;
+    new MideaModeSwitch(&ac, Mode::MODE_DRY, "Dry");            // tile order = creation order:
+    new MideaFanAutoSwitch(&ac);                               // Fan Only, Dry, Fan Auto
 }
 
 void loop() {
