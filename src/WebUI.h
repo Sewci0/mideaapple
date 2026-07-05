@@ -2,6 +2,10 @@
 #include <WebServer.h>
 #include <Appliance/AirConditioner/AirConditioner.h>
 
+// Runtime UART pin-swap toggle (implemented in main.cpp).
+bool mideaGetSwap();
+void mideaSetSwap(bool swapped);
+
 // ---------------------------------------------------------------------------
 //  Optional local web control panel (port 80). It writes to the SAME
 //  AirConditioner object HomeKit uses, so HomeKit, the web page, and the AC's
@@ -44,16 +48,20 @@ button.on{background:#238636;border-color:#238636}input[type=range]{width:100%}
 <option value=auto>Auto</option><option value=low>Low</option><option value=medium>Medium</option>
 <option value=high>High</option></select></div>
 <div class=row><b>Swing</b><button id=swing onclick="tsw()">--</button></div></div>
+<div class=card><div class=row><b>UART pins</b><button id=pins onclick="tpins()">--</button></div>
+<p class=muted>Flip if the AC doesn't respond - swaps RX/TX (GPIO4/5). Saved across reboots.</p></div>
 <p class=muted>mideaapple &middot; native HomeKit + web</p></div><script>
 let S={};const j=u=>fetch(u).then(r=>r.json());
 function set(k,v){j('/set?'+k+'='+encodeURIComponent(v)).then(render)}
 function tog(){set('power',S.power?0:1)}function tsw(){set('swing',S.swing=='off'?'vertical':'off')}
+function tpins(){set('swap',S.swap?0:1)}
 function render(s){S=s;indoor.textContent=s.indoor.toFixed(1)+'°';
 outdoor.textContent=(s.outdoor?s.outdoor.toFixed(1):'--')+'°';
 power.textContent=s.power?'ON':'OFF';power.className=s.power?'on':'';
 mode.value=s.mode;fan.value=s.fan;
 if(document.activeElement!=temp){temp.value=s.target;tval.textContent=s.target}
-swing.textContent=s.swing=='off'?'OFF':'ON';swing.className=s.swing=='off'?'':'on';}
+swing.textContent=s.swing=='off'?'OFF':'ON';swing.className=s.swing=='off'?'':'on';
+pins.textContent=s.swap?'B (swapped)':'A (normal)';}
 const poll=()=>j('/state').then(render).catch(()=>{});setInterval(poll,2000);poll();
 </script></body></html>)HTML";
 
@@ -96,6 +104,7 @@ static void handleState() {
   o += ",\"outdoor\":"; o += String(ac->getOutdoorTemp(), 1);
   o += ",\"fan\":\"";   o += fanStr(ac->getFanMode());   o += "\"";
   o += ",\"swing\":\""; o += swingStr(ac->getSwingMode()); o += "\"";
+  o += ",\"swap\":";    o += mideaGetSwap() ? "true" : "false";
   o += "}";
   server.send(200, "application/json", o);
 }
@@ -124,6 +133,7 @@ static void handleSet() {
     c.swingMode = (server.arg("swing") == "off") ? SwingMode::SWING_OFF
                                                  : SwingMode::SWING_VERTICAL;
   }
+  if (server.hasArg("swap")) mideaSetSwap(server.arg("swap").toInt() != 0);
   ac->control(c);
   handleState();   // echo current state back to the page
 }

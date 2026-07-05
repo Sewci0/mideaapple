@@ -57,8 +57,9 @@ USB-A pin (wire)   signal            ESP32-C3
 
 Outer two pins = power (VBUS + GND); inner two = the UART (D-/D+). The
 D- = AC-TX / D+ = AC-RX mapping is the documented one for Midea/MrCool USB units,
-but orientation varies by model — if it doesn't talk, swap D-/D+ (or GPIO4/5 in
-`platformio.ini`). Route both data lines through the level shifter (HV = AC 5 V,
+but orientation varies by model — if it doesn't talk, flip the **UART pins**
+toggle in the web panel (runtime swap, persisted, no reflash) or physically swap
+D-/D+. Route both data lines through the level shifter (HV = AC 5 V,
 LV = C3 3V3, common GND) — **never** land a 5 V line on a C3 GPIO directly. Meter
 first: the two outer pins read ~5 V (VBUS↔GND). Some models use a 4-pin JST-XH
 header instead of USB-A. (Pinout per the ESPHome midea docs + MrCool teardown.)
@@ -125,10 +126,11 @@ Web UI: http://192.168.x.y/
 ```
 
 The page shows indoor/outdoor temp and controls power, mode (incl. Dry/Fan that
-HomeKit's HeaterCooler can't show), target temp, fan, and swing. It writes to the
-same `AirConditioner` object HomeKit uses, so the Home app, the web page, and the
-AC's own remote stay in sync. `GET /state` returns JSON; `GET /set?<k>=<v>` applies
-a change (`power,temp,mode,fan,swing`). It's HTTP + unauthenticated — LAN only.
+HomeKit's HeaterCooler can't show), target temp, fan, swing, and a **UART pins**
+toggle (runtime RX/TX swap, see below). It writes to the same `AirConditioner`
+object HomeKit uses, so the Home app, the web page, and the AC's own remote stay
+in sync. `GET /state` returns JSON; `GET /set?<k>=<v>` applies a change
+(`power,temp,mode,fan,swing,swap`). It's HTTP + unauthenticated — LAN only.
 
 ## Troubleshooting
 
@@ -145,9 +147,10 @@ a change (`power,temp,mode,fan,swing`). It's HTTP + unauthenticated — LAN only
 
 **Other issues:**
 - **Won't enter flashing mode:** hold `BOOT`, tap `RST`, release `BOOT`, retry.
-- **AC doesn't respond:** swap `MIDEA_RX_PIN`/`MIDEA_TX_PIN` (GPIO4↔5) — TX/RX
-  orientation varies by model; confirm the level shifter is powered on both rails
-  (HV = AC 5 V, LV = C3 3V3, common GND).
+- **AC doesn't respond:** flip the **UART pins** toggle in the web panel (or
+  `GET /set?swap=1`) — it swaps RX/TX at runtime and persists across reboots, no
+  reflash. (Orientation varies by model.) Also confirm the level shifter is
+  powered on both rails (HV = AC 5 V, LV = C3 3V3, common GND).
 - **Random reboots during WiFi use:** brown-out on the 300 mA rail — lower TX
   power in `onWifiUp()` (`WIFI_POWER_5dBm` / `WIFI_POWER_2dBm`) or add a bulk cap.
 

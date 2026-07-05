@@ -1,6 +1,7 @@
 #include "HomeSpan.h"
 #include "MideaHeaterCooler.h"
 #include "WebUI.h"
+#include <Preferences.h>
 
 // AC UART. Midea's WiFi-dongle port runs 9600 8N1. The C3 has no Serial2, so we
 // drive a dedicated UART1 on two safe GPIOs (set in platformio.ini).
@@ -14,6 +15,31 @@
 AirConditioner ac;
 HardwareSerial MideaSerial(1);   // UART1
 
+// Runtime RX/TX swap, persisted in NVS. Which AC data pin is TX vs RX varies by
+// model, so this lets you flip the UART orientation from the web UI with no
+// rebuild/reflash. Default (unswapped) = MIDEA_RX_PIN / MIDEA_TX_PIN.
+Preferences prefs;
+bool g_pinsSwapped = false;
+
+static void beginMidea() {
+  int rx = g_pinsSwapped ? MIDEA_TX_PIN : MIDEA_RX_PIN;
+  int tx = g_pinsSwapped ? MIDEA_RX_PIN : MIDEA_TX_PIN;
+  MideaSerial.end();
+  MideaSerial.begin(9600, SERIAL_8N1, rx, tx);
+  Serial.printf("Midea UART: RX=%d TX=%d (swap=%d)\n", rx, tx, g_pinsSwapped);
+}
+
+// Called from WebUI.h
+bool mideaGetSwap() { return g_pinsSwapped; }
+void mideaSetSwap(bool s) {
+  if (s == g_pinsSwapped) return;
+  g_pinsSwapped = s;
+  prefs.begin("midea", false);
+  prefs.putBool("swap", s);
+  prefs.end();
+  beginMidea();   // re-init UART on the swapped pins immediately
+}
+
 // The AC's USB port only sources ~300 mA. Once WiFi is up, trim the RF power-amp
 // current spikes that cause brown-out resets on a weak rail. Raise the level if
 // range/connectivity suffers; pair this with a bulk cap (>=470uF) across 5V.
@@ -26,8 +52,11 @@ void onWifiUp() {
 void setup() {
   Serial.begin(115200);
 
-  MideaSerial.begin(9600, SERIAL_8N1, MIDEA_RX_PIN, MIDEA_TX_PIN);
-  ac.setStream(&MideaSerial);   // [verify] setStream()
+  prefs.begin("midea", true);                    // load saved pin orientation
+  g_pinsSwapped = prefs.getBool("swap", false);
+  prefs.end();
+  beginMidea();
+  ac.setStream(&MideaSerial);
   ac.setup();                   // begins the query/handshake with the AC mainboard
 
   homeSpan.setLogLevel(1);
