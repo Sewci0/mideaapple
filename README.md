@@ -64,13 +64,30 @@ LV = C3 3V3, common GND) — **never** land a 5 V line on a C3 GPIO directly. Me
 first: the two outer pins read ~5 V (VBUS↔GND). Some models use a 4-pin JST-XH
 header instead of USB-A. (Pinout per the ESPHome midea docs + MrCool teardown.)
 
-### Power — the 300 mA limit
+### Power — the 300 mA limit & WiFi TX auto-tuning
 
-That port only sources ~**300 mA**. WiFi TX can spike past that and brown-out the
-board. Mitigations (none on by default): solder a **≥470 µF electrolytic across
-5V→GND** to absorb the transients, and/or cap TX power by adding
-`WiFi.setTxPower(WIFI_POWER_8_5dBm)` in `onWifiUp()` (`main.cpp`). If it resets
-under WiFi load, do one or both, or feed the board from a separate 5 V source.
+That port only sources ~**300 mA**, and a full-power WiFi transmit (peaks toward
+~500 mA) can sag the rail and corrupt the association handshake. On a brownout-prone
+C3 the symptom is subtle: it **fails to authenticate, especially to a strong/near
+AP** (`reason 2` in the serial log), while a weak/far AP still works.
+
+The firmware handles this **automatically** — on first boot it auto-tunes WiFi TX
+power: it tries each level (19.5 → 2 dBm), measures the resulting link, and keeps
+the one with the **strongest RSSI** (so it lands on the best AP, not just any AP),
+preferring the highest power among equally-good links. The winner is saved to NVS
+for fast reboots; re-search happens automatically if it ever stops connecting. The
+current level is shown in `GET /state` as `"tx"`.
+
+Why "strongest link" and not "highest power": on a weak board, higher TX can fail
+the good AP and get shoved onto a worse one, so naive "highest power that connects"
+is wrong. (ESPHome/most libs only expose a *manual* `output_power` value; this
+searches for the right one per board + install.)
+
+If you want more range headroom (e.g. to run higher TX power), solder a **≥470 µF
+electrolytic across 5V→GND** to absorb the transients, or feed the board from a
+stronger 5 V source — then it'll auto-tune to a higher level on its own. The BLE
+radio is also shut off at boot (`btStop()`, HomeSpan is WiFi-only) to free a little
+more current on the tight rail.
 
 ## Build & flash
 
@@ -93,9 +110,13 @@ cd ~/projects/mideaapple
 - **Apple Silicon Macs:** the ESP32 RISC-V toolchain is an x86_64 binary — install
   Rosetta 2 once (`softwareupdate --install-rosetta --agree-to-license`) or the
   build fails with `riscv32-esp-elf-g++: Bad CPU type in executable`.
-- **HomeSpan is pinned to 1.9.1** (`platformio.ini`): the official PlatformIO
-  espressif32 platform ships arduino-esp32 core 2.0.17, but HomeSpan 2.x needs
-  core ≥ 3.3.0. To move to HomeSpan 2.x, switch `platform` to the pioarduino fork.
+- **Pinned toolchain** (`platformio.ini`): `platform = espressif32@6.11.0`
+  (arduino-esp32 core 2.0.17) for reproducible builds, plus **HomeSpan 1.9.1**
+  (HomeSpan 2.x needs core ≥ 3.3.0). To move to HomeSpan 2.x, switch `platform`
+  to the pioarduino fork.
+- **Flaky USB flashing?** The C3's native USB-JTAG can drop mid-flash if a serial
+  monitor holds the port — close the monitor first. If esptool still can't sync,
+  `--before usb_reset --no-stub` is more reliable than the default stub loader.
 
 ## Pair with HomeKit
 
@@ -103,6 +124,9 @@ cd ~/projects/mideaapple
    follow HomeSpan's prompt (or use its temporary setup hotspot).
 2. Home app → **Add Accessory** → **More options** → enter code **466-37-726**
    (HomeSpan's default; change it with the `S` serial command).
+
+The onboard RGB LED (GPIO8) shows HomeSpan status at a glance — blinking while it
+searches for WiFi / waits to be paired, steady once it's connected and paired.
 
 ## Update over the air (OTA)
 
@@ -119,18 +143,28 @@ Change the OTA password with the `O` serial command, or hardcode it via
 ## Web control panel
 
 Besides HomeKit, the firmware serves a small control page on **port 80**
-(`src/WebUI.h`). After it joins WiFi it prints its address to the serial log:
+(`src/WebUI.h`). HomeKit's HAP server is moved to **:1201** so the panel can own
+the default port — HomeKit still finds it via mDNS. After it joins WiFi it prints
+its address to the serial log:
 
 ```
 Web UI: http://192.168.x.y/
 ```
 
 The page shows indoor/outdoor temp and controls power, mode (incl. Dry/Fan that
-HomeKit's HeaterCooler can't show), target temp, fan, swing, and a **UART pins**
-toggle (runtime RX/TX swap, see below). It writes to the same `AirConditioner`
-object HomeKit uses, so the Home app, the web page, and the AC's own remote stay
-in sync. `GET /state` returns JSON; `GET /set?<k>=<v>` applies a change
-(`power,temp,mode,fan,swing,swap`). It's HTTP + unauthenticated — LAN only.
+HomeKit's HeaterCooler can't show), target temp, fan, and swing. It writes to the
+same `AirConditioner` object HomeKit uses, so the Home app, the web page, and the
+AC's own remote stay in sync. Endpoints (HTTP, unauthenticated — LAN only):
+
+- `GET /state` — JSON: AC state **plus** the WiFi link (`bssid`, `rssi`, `chan`,
+  the auto-tuned `tx` power, and the `swap` state).
+- `GET /set?<k>=<v>` — apply a change (`power,temp,mode,fan,swing,swap`).
+- `GET /scan` — every visible AP (SSID/BSSID/channel/RSSI as the chip hears it) —
+  handy for seeing which AP/BSSID it can actually reach.
+
+The runtime **UART RX/TX pin swap** is exposed through the API only
+(`GET /set?swap=1`, persisted across reboots — flip it if the AC doesn't respond);
+it's deliberately kept out of the GUI to avoid an accidental tap breaking comms.
 
 ## Troubleshooting
 
@@ -147,12 +181,13 @@ in sync. `GET /state` returns JSON; `GET /set?<k>=<v>` applies a change
 
 **Other issues:**
 - **Won't enter flashing mode:** hold `BOOT`, tap `RST`, release `BOOT`, retry.
-- **AC doesn't respond:** flip the **UART pins** toggle in the web panel (or
-  `GET /set?swap=1`) — it swaps RX/TX at runtime and persists across reboots, no
-  reflash. (Orientation varies by model.) Also confirm the level shifter is
-  powered on both rails (HV = AC 5 V, LV = C3 3V3, common GND).
-- **Random reboots during WiFi use:** brown-out on the 300 mA rail — add
-  `WiFi.setTxPower(WIFI_POWER_8_5dBm)` (or lower) in `onWifiUp()` and/or a bulk cap.
+- **AC doesn't respond:** swap RX/TX at runtime with `GET /set?swap=1` — it
+  persists across reboots, no reflash. (Orientation varies by model.) Also confirm
+  the level shifter is powered on both rails (HV = AC 5 V, LV = C3 3V3, common GND).
+- **Random reboots, or won't join a strong/near AP (`reason 2`):** brown-out on
+  the 300 mA rail when transmitting at full power. The firmware **auto-tunes TX
+  power** to dodge this (watch the `[tx-tune]` serial log at boot); for more range
+  headroom add a ≥470 µF bulk cap and/or a stronger 5 V supply.
 
 ## Status / TODO
 
@@ -160,10 +195,13 @@ in sync. `GET /state` returns JSON; `GET /set?<k>=<v>` applies a change
 - [x] Firmware builds green: HomeKit HeaterCooler + web control panel. API
       verified against real MideaUART/HomeSpan headers (~64% flash, 16% RAM).
 - [x] Dry / Fan-only modes exposed via the web UI (HeaterCooler can't show them).
+- [x] WiFi TX-power auto-tuning (dodges the 300 mA-rail brownout; picks the
+      strongest-link level, no per-board hardcoding) + onboard status LED (GPIO8).
 - [ ] Meter the USB-A pins: confirm 5 V on VBUS, UART TTL is 3.3 V (not 5 V),
       and which data pin is the AC's TX.
 - [ ] Confirm AC model has this UART dongle bay (not IR-only) & MideaUART support.
-- [ ] Add the ≥470 µF bulk cap; verify no brown-out during WiFi TX.
+- [ ] Optional: ≥470 µF bulk cap for more TX-power/range headroom (auto-tune
+      already handles the brownout without it).
 - [ ] Flash (`pio run -t upload`), pair (466-37-726), test against the real AC;
       swap GPIO4/5 if the AC doesn't respond (TX/RX orientation).
 

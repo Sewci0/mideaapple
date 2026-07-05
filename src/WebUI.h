@@ -5,9 +5,11 @@
 // Runtime UART pin-swap toggle (implemented in main.cpp).
 bool mideaGetSwap();
 void mideaSetSwap(bool swapped);
+const char *mideaGetTxLabel();   // current auto-tuned WiFi TX power (dBm), read-only
 
 // ---------------------------------------------------------------------------
-//  Optional local web control panel (port 80). It writes to the SAME
+//  Optional local web control panel (port 80 — HAP is moved to :1201 in main.cpp).
+//  It writes to the SAME
 //  AirConditioner object HomeKit uses, so HomeKit, the web page, and the AC's
 //  own remote all stay in sync — the AC is the single source of truth, and
 //  MideaHeaterCooler::loop() mirrors its state back into HomeKit at 1 Hz.
@@ -21,7 +23,7 @@ using dudanov::midea::ac::FanMode;
 using dudanov::midea::ac::SwingMode;
 using dudanov::midea::ac::Control;
 
-static WebServer      server(80);
+static WebServer      server(80);     // HAP moved to :1201 (main.cpp) so the panel owns :80
 static AirConditioner *g_ac = nullptr;
 static bool           started = false;
 
@@ -48,20 +50,16 @@ button.on{background:#238636;border-color:#238636}input[type=range]{width:100%}
 <option value=auto>Auto</option><option value=low>Low</option><option value=medium>Medium</option>
 <option value=high>High</option></select></div>
 <div class=row><b>Swing</b><button id=swing onclick="tsw()">--</button></div></div>
-<div class=card><div class=row><b>UART pins</b><button id=pins onclick="tpins()">--</button></div>
-<p class=muted>Flip if the AC doesn't respond - swaps RX/TX (GPIO4/5). Saved across reboots.</p></div>
 <p class=muted>mideaapple &middot; native HomeKit + web</p></div><script>
 let S={};const j=u=>fetch(u).then(r=>r.json());
 function set(k,v){j('/set?'+k+'='+encodeURIComponent(v)).then(render)}
 function tog(){set('power',S.power?0:1)}function tsw(){set('swing',S.swing=='off'?'vertical':'off')}
-function tpins(){set('swap',S.swap?0:1)}
 function render(s){S=s;indoor.textContent=s.indoor.toFixed(1)+'°';
 outdoor.textContent=(s.outdoor?s.outdoor.toFixed(1):'--')+'°';
 power.textContent=s.power?'ON':'OFF';power.className=s.power?'on':'';
 mode.value=s.mode;fan.value=s.fan;
 if(document.activeElement!=temp){temp.value=s.target;tval.textContent=s.target}
-swing.textContent=s.swing=='off'?'OFF':'ON';swing.className=s.swing=='off'?'':'on';
-pins.textContent=s.swap?'B (swapped)':'A (normal)';}
+swing.textContent=s.swing=='off'?'OFF':'ON';swing.className=s.swing=='off'?'':'on';}
 const poll=()=>j('/state').then(render).catch(()=>{});setInterval(poll,2000);poll();
 </script></body></html>)HTML";
 
@@ -105,7 +103,28 @@ static void handleState() {
   o += ",\"fan\":\"";   o += fanStr(ac->getFanMode());   o += "\"";
   o += ",\"swing\":\""; o += swingStr(ac->getSwingMode()); o += "\"";
   o += ",\"swap\":";    o += mideaGetSwap() ? "true" : "false";
+  o += ",\"bssid\":\""; o += WiFi.BSSIDstr();           o += "\"";   // which AP we're on
+  o += ",\"rssi\":";    o += String(WiFi.RSSI());                     // signal to that AP (dBm)
+  o += ",\"chan\":";    o += String(WiFi.channel());
+  o += ",\"tx\":";      o += mideaGetTxLabel();                     // auto-tuned TX power (dBm)
   o += "}";
+  server.send(200, "application/json", o);
+}
+
+// /scan — one-shot WiFi scan: every visible AP (incl. all same-SSID BSSIDs) with
+// channel + RSSI as the CHIP hears it. Briefly interrupts the link while scanning.
+static void handleScan() {
+  int n = WiFi.scanNetworks();
+  String o = "[";
+  for (int i = 0; i < n; i++) {
+    if (i) o += ",";
+    o += "{\"ssid\":\"";  o += WiFi.SSID(i);       o += "\"";
+    o += ",\"bssid\":\""; o += WiFi.BSSIDstr(i);    o += "\"";
+    o += ",\"ch\":";      o += String(WiFi.channel(i));
+    o += ",\"rssi\":";    o += String(WiFi.RSSI(i)); o += "}";
+  }
+  o += "]";
+  WiFi.scanDelete();
   server.send(200, "application/json", o);
 }
 
@@ -144,6 +163,7 @@ inline void webBegin(AirConditioner *ac) {
   server.on("/",      []() { server.send_P(200, "text/html", PAGE); });
   server.on("/state", handleState);
   server.on("/set",   handleSet);
+  server.on("/scan",  handleScan);
   server.begin();
   started = true;
 }
