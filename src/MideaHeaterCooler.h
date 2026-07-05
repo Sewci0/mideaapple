@@ -79,14 +79,15 @@ struct MideaHeaterCooler : Service::HeaterCooler {
     if (millis() - lastPush < 1000) return;
     lastPush = millis();
 
-    curTemp.setVal(ac->getIndoorTemp());
+    float indoor = ac->getIndoorTemp();
+    if (indoor > 0) curTemp.setVal(indoor);   // 0 = AC hasn't reported yet
 
     bool power = ac->getPowerState();
     active.setVal(power ? 1 : 0);
 
-    float sp = ac->getTargetTemp();
-    coolTo.setVal(sp);
-    heatTo.setVal(sp);
+    float sp = ac->getTargetTemp();            // 0 until the AC reports a status
+    if (sp >= 17 && sp <= 30) coolTo.setVal(sp);   // guard against out-of-range
+    if (sp >= 16 && sp <= 30) heatTo.setVal(sp);   // setVal (esp. the "no data" 0)
 
     Mode m = ac->getMode();
     if (!power)                    curState.setVal(HK_INACTIVE);
