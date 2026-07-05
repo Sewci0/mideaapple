@@ -40,11 +40,32 @@ void mideaSetSwap(bool s) {
   beginMidea();   // re-init UART on the swapped pins immediately
 }
 
-// The AC's USB port only sources ~300 mA. Once WiFi is up, trim the RF power-amp
-// current spikes that cause brown-out resets on a weak rail. Raise the level if
-// range/connectivity suffers; pair this with a bulk cap (>=470uF) across 5V.
+// WiFi diagnostics: log association stages + the disconnect reason code, so we can
+// tell wrong-password (reason 15) from AP-not-found (201), auth-fail (202), etc.
+void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
+  switch (event) {
+    case ARDUINO_EVENT_WIFI_STA_START:
+      Serial.printf("[wifi] STA MAC %s\n", WiFi.macAddress().c_str());
+      break;
+    case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+      Serial.println("[wifi] associated (auth OK) - waiting for IP");
+      break;
+    case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+      Serial.printf("[wifi] got IP %s\n", WiFi.localIP().toString().c_str());
+      break;
+    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+      Serial.printf("[wifi] disconnected, reason=%d\n",
+                    info.wifi_sta_disconnected.reason);
+      break;
+    default:
+      break;
+  }
+}
+
+// Once WiFi is up, start the web panel. WiFi TX power runs at full — a prior
+// 8.5 dBm trim (for the 300 mA AC rail) was removed. If it brown-out-resets in
+// the AC bay without a bulk cap, re-add: WiFi.setTxPower(WIFI_POWER_8_5dBm);
 void onWifiUp() {
-  WiFi.setTxPower(WIFI_POWER_8_5dBm);
   webui::webBegin(&ac);   // start the local web control panel (port 80)
   Serial.printf("Web UI: http://%s/\n", WiFi.localIP().toString().c_str());
 }
