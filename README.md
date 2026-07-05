@@ -183,7 +183,9 @@ Web UI: http://192.168.x.y/
 The page shows indoor/outdoor temp and controls power, mode (incl. Dry/Fan that
 HomeKit's HeaterCooler can't show), target temp, fan, and swing. It writes to the
 same `AirConditioner` object HomeKit uses, so the Home app, the web page, and the
-AC's own remote stay in sync. Endpoints (HTTP, unauthenticated — LAN only):
+AC's own remote stay in sync. While the AC is off it still shows the **last mode**
+(power *is* the mode in MideaUART, so the AC forgets it otherwise), and the fan and
+swing controls disable — those settings only apply while it's running. Endpoints (HTTP, unauthenticated — LAN only):
 
 - `GET /state` — JSON: AC state **plus** the WiFi link (`bssid`, `rssi`, `chan`,
   the auto-tuned `tx` power, and the `swap` state).

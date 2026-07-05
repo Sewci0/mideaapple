@@ -6,6 +6,7 @@
 bool mideaGetSwap();
 void mideaSetSwap(bool swapped);
 const char *mideaGetTxLabel();   // current auto-tuned WiFi TX power (dBm), read-only
+dudanov::midea::ac::Mode mideaLastMode();  // last non-OFF AC mode — shown while the AC is powered off
 
 // ---------------------------------------------------------------------------
 //  Optional local web control panel (port 80 — HAP is moved to :1201 in main.cpp).
@@ -36,6 +37,7 @@ body{font-family:system-ui,sans-serif;margin:0;background:#0b0f14;color:#e6edf3}
 button,select{background:#21262d;color:#e6edf3;border:1px solid #30363d;border-radius:8px;padding:8px 12px;font-size:15px}
 button.on{background:#238636;border-color:#238636}input[type=range]{width:100%}
 input[type=range]:disabled{opacity:.35}
+button:disabled,select:disabled{opacity:.4;cursor:not-allowed}
 .big{font-size:34px;font-weight:700}.muted{color:#8b949e;font-size:13px}</style></head><body><div class=wrap>
 <h1>Midea AC</h1>
 <div class=card><div class=row><span class=muted>Indoor</span><span class=big id=indoor>--</span></div>
@@ -72,6 +74,7 @@ outdoor.textContent=(s.outdoor?s.outdoor.toFixed(1):'--')+'°';
 dispPower=rvPower(s);power.textContent=dispPower=='1'?'ON':'OFF';power.className=dispPower=='1'?'on':'';
 let md=rv('mode',s);mode.value=md;fan.value=rv('fan',s);
 let sw=rv('swing',s);swing.textContent=sw=='off'?'OFF':'ON';swing.className=sw=='off'?'':'on';
+let off=dispPower!='1';fan.disabled=off;swing.disabled=off;   // fan/swing are ignored while the AC is off
 temp.disabled=(md=='fan_only');
 if(document.activeElement!=temp){let t=rv('temp',s);temp.value=t;tval.textContent=md=='fan_only'?'--':t}}
 const poll=()=>j('/state').then(render).catch(()=>{});setInterval(poll,1500);poll();
@@ -110,7 +113,8 @@ static void handleState() {
   AirConditioner *ac = g_ac;
   String o = "{";
   o += "\"power\":";    o += ac->getPowerState() ? "true" : "false";
-  o += ",\"mode\":\"";  o += modeStr(ac->getMode());     o += "\"";
+  Mode dispMode = ac->getPowerState() ? ac->getMode() : mideaLastMode();  // show last mode when off
+  o += ",\"mode\":\"";  o += modeStr(dispMode);          o += "\"";
   o += ",\"target\":";  o += String(ac->getTargetTemp(), 1);
   o += ",\"indoor\":";  o += String(ac->getIndoorTemp(), 1);
   o += ",\"outdoor\":"; o += String(ac->getOutdoorTemp(), 1);

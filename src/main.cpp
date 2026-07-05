@@ -15,6 +15,11 @@
 AirConditioner ac;
 HardwareSerial MideaSerial(1);   // UART1
 
+// Last non-OFF AC mode, tracked every loop so the web UI can show which mode the AC will resume in
+// while it's powered off (MideaUART collapses getMode() to OFF when off — power *is* the mode).
+Mode g_lastActiveMode = Mode::MODE_COOL;
+Mode mideaLastMode() { return g_lastActiveMode; }
+
 // Runtime RX/TX swap, persisted in NVS. Which AC data pin is TX vs RX varies by
 // model, so this lets you flip the UART orientation from the web UI with no
 // rebuild/reflash. Default (unswapped) = MIDEA_RX_PIN / MIDEA_TX_PIN.
@@ -211,5 +216,7 @@ void setup() {
 void loop() {
   homeSpan.poll();
   ac.loop();
+  Mode m = ac.getMode();
+  if (m != Mode::MODE_OFF) g_lastActiveMode = m;   // remember it for the web UI's powered-off display
   webui::webLoop();
 }
