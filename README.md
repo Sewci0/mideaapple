@@ -67,10 +67,10 @@ header instead of USB-A. (Pinout per the ESPHome midea docs + MrCool teardown.)
 ### Power — the 300 mA limit
 
 That port only sources ~**300 mA**. WiFi TX can spike past that and brown-out the
-board, so this firmware caps TX power (`WIFI_POWER_8_5dBm` in `main.cpp`). Also
-solder a **≥470 µF electrolytic across 5V→GND** right at the board to absorb the
-transients. If it still resets under load, lower TX power further or feed the
-board from a separate 5 V source.
+board. Mitigations (none on by default): solder a **≥470 µF electrolytic across
+5V→GND** to absorb the transients, and/or cap TX power by adding
+`WiFi.setTxPower(WIFI_POWER_8_5dBm)` in `onWifiUp()` (`main.cpp`). If it resets
+under WiFi load, do one or both, or feed the board from a separate 5 V source.
 
 ## Build & flash
 
@@ -151,8 +151,8 @@ in sync. `GET /state` returns JSON; `GET /set?<k>=<v>` applies a change
   `GET /set?swap=1`) — it swaps RX/TX at runtime and persists across reboots, no
   reflash. (Orientation varies by model.) Also confirm the level shifter is
   powered on both rails (HV = AC 5 V, LV = C3 3V3, common GND).
-- **Random reboots during WiFi use:** brown-out on the 300 mA rail — lower TX
-  power in `onWifiUp()` (`WIFI_POWER_5dBm` / `WIFI_POWER_2dBm`) or add a bulk cap.
+- **Random reboots during WiFi use:** brown-out on the 300 mA rail — add
+  `WiFi.setTxPower(WIFI_POWER_8_5dBm)` (or lower) in `onWifiUp()` and/or a bulk cap.
 
 ## Status / TODO
 
