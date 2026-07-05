@@ -70,13 +70,40 @@ struct MideaHeaterCooler : Service::HeaterCooler {
 
   // ---- HomeKit write  ->  Midea -----------------------------------------
   boolean update() override {
-    Control ctl;                                  // Optional<> fields: unset = no change
+    // Power == mode in MideaUART, and control() drops any call made while another is still in
+    // flight — so NEVER pair setPowerState() with control() (the second is silently lost). Work
+    // out the single command to send.
+    bool wantOn = active.getNewVal() != 0;
+    bool wasOff = !ac->getPowerState();
 
+    if (!wantOn) {                                // turning the AC off -> one MODE_OFF command
+      ac->setPowerState(false);
+      acHold();
+      return true;
+    }
+    // Pure power-on (nothing else changed): let the library restore the last mode (single cmd).
+    if (wasOff && !tgtState.updated() && !coolTo.updated() && !heatTo.updated()
+        && !fan.updated() && !swing.updated()) {
+      ac->setPowerState(true);
+      acHold();
+      return true;
+    }
+
+    Control ctl;                                  // Optional<> fields: unset = no change
     if (tgtState.updated()) {
       switch (tgtState.getNewVal()) {
         case HK_HEAT: ctl.mode = Mode::MODE_HEAT; break;
         case HK_COOL: ctl.mode = Mode::MODE_COOL; break;
         default:      ctl.mode = Mode::MODE_AUTO; break;   // HK_AUTO
+      }
+    } else if (wasOff) {
+      // Powering on while also changing temp/fan/swing: set a mode too, else the AC can't leave
+      // OFF. Use the mode we're currently showing. (Leaving mode unset when already on is what
+      // keeps a temp/fan tweak from knocking the AC out of Dry/Fan-only.)
+      switch (tgtState.getVal()) {
+        case HK_HEAT: ctl.mode = Mode::MODE_HEAT; break;
+        case HK_COOL: ctl.mode = Mode::MODE_COOL; break;
+        default:      ctl.mode = Mode::MODE_AUTO; break;
       }
     }
     if (coolTo.updated()) ctl.targetTemp = coolTo.getNewVal<float>();
@@ -84,9 +111,7 @@ struct MideaHeaterCooler : Service::HeaterCooler {
     if (fan.updated())    ctl.fanMode   = fanFromPercent(fan.getNewVal());
     if (swing.updated())  ctl.swingMode = swing.getNewVal() ? SwingMode::SWING_VERTICAL
                                                             : SwingMode::SWING_OFF;
-
-    ac->setPowerState(active.getNewVal() != 0);   // power on/off is separate from mode
-    ac->control(ctl);                             // send the delta
+    ac->control(ctl);                             // single command; mode set only when needed
     acHold();                                     // don't mirror stale state back over this write
     return true;
   }
@@ -155,8 +180,11 @@ struct MideaModeSwitch : Service::Switch {
   }
   boolean update() override {
     Control ctl;
-    if (on.getNewVal()) { ctl.mode = mode; ac->setPowerState(true); }
-    else                  ctl.mode = Mode::MODE_COOL;   // leaving this mode -> Cool
+    // Power == mode in MideaUART (getPowerState() is `mode != OFF`), so setting a non-OFF mode
+    // powers the AC on by itself. Do NOT also call setPowerState(): it fires its own control()
+    // and sets m_sendControl, which makes THIS control() a silent no-op — the mode we want is
+    // dropped and the AC turns on in its last mode (Cool). One command only.
+    ctl.mode = on.getNewVal() ? mode : Mode::MODE_COOL;   // off -> leave this mode, revert to Cool
     ac->control(ctl);
     acHold();
     return true;
@@ -181,6 +209,11 @@ struct MideaFanAutoSwitch : Service::Switch {
   boolean update() override {
     Control ctl;
     ctl.fanMode = on.getNewVal() ? FanMode::FAN_AUTO : FanMode::FAN_MEDIUM;
+    // Fan settings are ignored while the AC is off (control() skips them when mode == OFF). If the
+    // user flips Fan Auto on from a powered-off AC, power it on (into Cool) in the SAME command so
+    // the fan mode actually sticks instead of the switch bouncing back off.
+    if (on.getNewVal() && !ac->getPowerState())
+      ctl.mode = Mode::MODE_COOL;
     ac->control(ctl);
     acHold();
     return true;

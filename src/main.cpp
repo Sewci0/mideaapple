@@ -172,11 +172,21 @@ void setup() {
                                 // port; HomeKit still finds it — port is advertised via mDNS
   homeSpan.setWifiCallback(onWifiUp);
   homeSpan.enableOTA();         // OTA reflash once it's on WiFi
-  homeSpan.begin(Category::AirConditioners, "Midea AC");
+  homeSpan.begin(Category::Bridges, "Midea AC Bridge");
 
-  // ONE accessory with all services. On HomeSpan 2.x (core 3.x) each service carries a
-  // ConfiguredName, so Home labels each tile ("Outdoor", "Dry", "Fan Only", "Fan Auto") while
-  // keeping them grouped under the single "Midea AC" device — no bridge, no separate devices.
+  // Bridge with two accessories: the AC (all controls grouped into ONE device) and a SEPARATE
+  // Outdoor temperature sensor — so the sensor can live in its own room ("Outside") and be picked
+  // cleanly as an automation trigger. HomeSpan requires the FIRST accessory of a bridge to be the
+  // bridge itself (AccessoryInformation only); Home hides it, showing just the two below.
+  new SpanAccessory();
+    new Service::AccessoryInformation();
+      new Characteristic::Identify();
+      new Characteristic::Manufacturer("Midea");
+      new Characteristic::Model("mideaapple");
+      new Characteristic::Name("Midea AC Bridge");
+
+  // Accessory 1 — the AC: one tile, all controls. On HomeSpan 2.x each service carries a
+  // ConfiguredName, so Home labels every tile ("Dry", "Fan Only", "Fan Auto") inside this device.
   new SpanAccessory();
     new Service::AccessoryInformation();
       new Characteristic::Identify();
@@ -184,10 +194,18 @@ void setup() {
       new Characteristic::Model("mideaapple");
       new Characteristic::Name("Midea AC");
     new MideaHeaterCooler(&ac);
-    new MideaOutdoorTemp(&ac);                          // outdoor temp (named "Outdoor")
     new MideaModeSwitch(&ac, Mode::MODE_FAN_ONLY, "Fan Only");   // modes HeaterCooler can't hold;
     new MideaModeSwitch(&ac, Mode::MODE_DRY, "Dry");            // tile order = creation order:
     new MideaFanAutoSwitch(&ac);                               // Fan Only, Dry, Fan Auto
+
+  // Accessory 2 — outdoor temp as its OWN device (assign it to an "Outside" room in Home).
+  new SpanAccessory();
+    new Service::AccessoryInformation();
+      new Characteristic::Identify();
+      new Characteristic::Manufacturer("Midea");
+      new Characteristic::Model("mideaapple");
+      new Characteristic::Name("Outdoor");
+    new MideaOutdoorTemp(&ac);
 }
 
 void loop() {
