@@ -80,6 +80,7 @@ void setup() {
   ac.setStream(&MideaSerial);
   ac.setup();                   // begins the query/handshake with the AC mainboard
 
+  WiFi.onEvent(onWifiEvent);    // register BEFORE WiFi starts, or no [wifi] logs
   homeSpan.setLogLevel(1);
   homeSpan.setWifiCallback(onWifiUp);
   homeSpan.enableOTA();         // OTA reflash once it's on WiFi
