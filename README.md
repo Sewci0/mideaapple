@@ -90,11 +90,28 @@ the good AP and get shoved onto a worse one, so naive "highest power that connec
 is wrong. (ESPHome/most libs only expose a *manual* `output_power` value; this
 searches for the right one per board + install.)
 
-If you want more range headroom (e.g. to run higher TX power), solder a **≥470 µF
-electrolytic across 5V→GND** to absorb the transients, or feed the board from a
+If you want more range headroom (e.g. to run higher TX power), feed the board from a
 stronger 5 V source — then it'll auto-tune to a higher level on its own. The BLE
 radio is also shut off at boot (`btStop()`, HomeSpan is WiFi-only) to free a little
 more current on the tight rail.
+
+## Install (prebuilt — no toolchain)
+
+Don't want to build from source? Flash a prebuilt image:
+
+- **Browser flasher:** open **<https://sewci0.github.io/mideaapple/>** in Chrome or
+  Edge, plug the C3 in over USB-C, and click **Connect & Flash**. (Published by the
+  release workflow; needs GitHub Pages → Source: *GitHub Actions* enabled once.)
+- **Or with esptool:** download `mideaapple-c3-merged.bin` from the
+  [latest release](https://github.com/Sewci0/mideaapple/releases/latest) and write it
+  at offset `0x0` (on the C3 the bootloader lives at 0x0, not 0x1000):
+
+  ```sh
+  pip install esptool
+  esptool.py --chip esp32c3 --port <PORT> -b 460800 write_flash 0x0 mideaapple-c3-merged.bin
+  ```
+
+Then jump to [Pair with HomeKit](#pair-with-homekit). To build it yourself instead:
 
 ## Build & flash
 
@@ -121,8 +138,10 @@ cd ~/projects/mideaapple
   community fork of `platform-espressif32`, which ships **arduino-esp32 core 3.x**
   (ESP-IDF 5.x). That core is what **HomeSpan 2.x** requires — its per-service
   `ConfiguredName` support is what lets us name every tile inside one grouped AC
-  device. `platform = .../stable/...` tracks the latest; pin a versioned release
-  URL for reproducible builds.
+  device. The platform, HomeSpan, and MideaUART are all **pinned to exact versions**
+  in `platformio.ini` (platform `55.03.39` → core 3.3.9, HomeSpan `2.1.8`, MideaUART
+  `v1.1.9`) so builds are reproducible and the CI badge can't flip from an upstream
+  bump — change them deliberately, in their own commit.
 - **Flaky USB flashing?** The C3's native USB-JTAG can drop mid-flash if a serial
   monitor holds the port — close the monitor first, then re-run `pio run -t upload`.
 
@@ -188,6 +207,12 @@ swing controls disable — those settings only apply while it's running. Endpoin
 - `GET /scan` — every visible AP (SSID/BSSID/channel/RSSI as the chip hears it) —
   handy for seeing which AP/BSSID it can actually reach.
 
+> **Security:** the panel and every endpoint are **plain HTTP with no auth**, and all
+> controls are `GET`s — so any page a device on the same LAN opens could fire
+> `GET /set?power=0` (there's no CSRF token). Keep the device on a trusted network, and
+> change the default **OTA password** (`homespan-ota` — `O` in the serial monitor)
+> before you deploy it.
+
 The runtime **UART RX/TX pin swap** is exposed through the API only
 (`GET /set?swap=1`, persisted across reboots — flip it if the AC doesn't respond);
 it's deliberately kept out of the GUI to avoid an accidental tap breaking comms.
@@ -213,14 +238,15 @@ it's deliberately kept out of the GUI to avoid an accidental tap breaking comms.
 - **Random reboots, or won't join a strong/near AP (`reason 2`):** brown-out on
   the 300 mA rail when transmitting at full power. The firmware **auto-tunes TX
   power** to dodge this (watch the `[tx-tune]` serial log at boot); for more range
-  headroom add a ≥470 µF bulk cap and/or a stronger 5 V supply.
+  headroom feed it from a stronger 5 V supply.
 
 ## Status / TODO
 
 - [x] Board: ESP32-C3 (small + low avg draw for the 300 mA bay).
-- [x] Firmware builds green on arduino-esp32 core 3.x / HomeSpan 2.x.
-- [x] Wired to a real AC on GPIO7/10 (via level shifter) — indoor/outdoor temps
-      and controls confirmed working end-to-end.
+- [x] Firmware builds green on arduino-esp32 core 3.3.9 / HomeSpan 2.1.8 (CI + a
+      local clean build on the pinned toolchain).
+- [x] Wired to a real AC on GPIO7/10 (via level shifter) — indoor/outdoor temps and
+      controls confirmed working end-to-end on the current core 3.x / HomeSpan 2.x build.
 - [x] HomeKit: one grouped "Midea AC" device with named tiles — HeaterCooler,
       Outdoor temp, Fan Only, Dry, Fan Auto (each a `ConfiguredName`d service).
 - [x] Dry / Fan-only modes exposed via the web UI too (HeaterCooler can't show them).
@@ -229,8 +255,6 @@ it's deliberately kept out of the GUI to avoid an accidental tap breaking comms.
 - [x] Optimistic web-UI + HomeKit mirroring (hold-until-confirmed + debounce) so
       buttons don't snap back mid-transition.
 - [ ] Confirm compatibility on more AC models (UART dongle bay, not IR-only).
-- [ ] Optional: ≥470 µF bulk cap for more TX-power/range headroom (auto-tune
-      already handles the brownout without it).
 
 ## Credits & license
 
