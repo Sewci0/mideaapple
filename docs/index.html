@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Flash mideaapple</title>
+<!-- ESP Web Tools: flashes the merged firmware straight from the browser over Web Serial.
+     The page, manifest.json, and the .bin are deployed together to GitHub Pages by the
+     release workflow, so the firmware fetch is same-origin (no CORS). Chrome/Edge only. -->
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: system-ui, sans-serif; margin: 0; background: #0b0f14; color: #e6edf3;
+         min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+  .wrap { max-width: 560px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .muted { color: #8b949e; font-size: 14px; line-height: 1.55; }
+  a { color: #58a6ff; }
+  .card { background: #161b22; border: 1px solid #21262d; border-radius: 12px;
+          padding: 20px; margin: 20px 0; }
+  esp-web-install-button { --esp-tools-button-color: #e6edf3;
+          --esp-tools-button-text-color: #0b0f14; }
+  code { background: #21262d; padding: 2px 6px; border-radius: 6px; font-size: 13px; }
+  ol { line-height: 1.7; padding-left: 20px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Flash mideaapple</h1>
+  <p class="muted">Native HomeKit firmware for a Midea air conditioner on an ESP32-C3.
+     <a href="https://github.com/Sewci0/mideaapple">Source &amp; docs →</a></p>
+
+  <div class="card">
+    <ol>
+      <li>Plug the ESP32-C3 into this computer over USB-C.</li>
+      <li>Click <b>Connect</b> and pick the board's serial port.</li>
+      <li>If it won't connect, hold <code>BOOT</code>, tap <code>RST</code>, release
+          <code>BOOT</code>, then retry.</li>
+    </ol>
+    <esp-web-install-button manifest="./manifest.json">
+      <button slot="activate">Connect &amp; Flash</button>
+      <span slot="unsupported">Your browser can't do Web Serial — use Chrome or Edge on
+        desktop, or flash the <a href="https://github.com/Sewci0/mideaapple/releases/latest">release
+        binary</a> with esptool.</span>
+      <span slot="not-allowed">Serial access was blocked — allow it and reload.</span>
+    </esp-web-install-button>
+  </div>
+
+  <p class="muted">After flashing: open a serial monitor at <code>115200</code>, type
+    <code>W</code> to set WiFi, then add the accessory in the Home app with code
+    <b>466-37-726</b>. Full instructions in the
+    <a href="https://github.com/Sewci0/mideaapple#pair-with-homekit">README</a>.</p>
+</div>
+</body>
+</html>

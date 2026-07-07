@@ -1,0 +1,81 @@
+name: release
+
+# Cut a release by pushing a tag:  git tag v0.1.0 && git push origin v0.1.0
+# Produces a GitHub Release with the merged 0x0 image attached, and (re)deploys the
+# browser flasher at https://<owner>.github.io/mideaapple/ pointing at this build.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # create the release + upload the .bin
+  pages: write      # deploy the web flasher
+  id-token: write   # required by actions/deploy-pages
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: pip install platformio==6.1.19
+
+      - name: Build firmware
+        run: pio run -e esp32-c3-devkitm-1
+
+      - name: Stage release binary + web flasher
+        run: |
+          set -eu
+          mkdir -p dist _site
+          # firmware.factory.bin = the merged image that flashes at offset 0x0 on the C3
+          cp .pio/build/esp32-c3-devkitm-1/firmware.factory.bin dist/mideaapple-c3-merged.bin
+          # web flasher: page + manifest + firmware, all served from the same origin (no CORS)
+          cp docs/index.html docs/manifest.json _site/
+          cp dist/mideaapple-c3-merged.bin _site/
+          # stamp the tag (or run id) into the manifest version field
+          ver="${GITHUB_REF_NAME:-$GITHUB_RUN_ID}"
+          sed -i "s/\"version\": *\"[^\"]*\"/\"version\": \"$ver\"/" _site/manifest.json
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/mideaapple-c3-merged.bin
+          generate_release_notes: true
+
+  # Deploy the browser flasher to GitHub Pages. Requires Pages -> Source: "GitHub Actions"
+  # to be enabled once in repo Settings; until then this job fails harmlessly and the
+  # Release (with the downloadable .bin) still publishes.
+  deploy-pages:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

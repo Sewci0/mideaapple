@@ -67,7 +67,8 @@ static int connectAt(int idx, const char *ssid, const char *pwd, int ms) {
   WiFi.begin(ssid, pwd);
   unsigned long t0 = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - t0 < (unsigned long)ms) delay(100);
-  return WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0;   // 0 = didn't connect
+  return WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0;   // nonzero (a negative dBm) = connected;
+                                                           // 0 = didn't. Callers treat r<0 / r!=0 as "up".
 }
 
 static bool autoTuneTx(const char *ssid, const char *pwd) {
@@ -159,6 +160,10 @@ void setup() {
 
   // Auto-tune WiFi TX power BEFORE HomeSpan connects: read the stored creds and find the highest
   // level that authenticates (first boot walks 19.5 -> 2 dBm; the winner is saved for fast reboots).
+  // NOTE: this reaches into HomeSpan's own NVS layout (the "WIFI" namespace / "WIFIDATA" {ssid,pwd}
+  // struct) — reverse-engineered and coupled to HomeSpan internals. If a future HomeSpan changes that
+  // layout the read just yields an empty SSID: we skip auto-tune and TX stays at the 2 dBm floor
+  // (safe — a low-power board still joins, a strong one merely runs conservative), never fatal.
   {
     char wssid[MAX_SSID + 1] = {0}, wpwd[MAX_PWD + 1] = {0};
     Preferences wp;

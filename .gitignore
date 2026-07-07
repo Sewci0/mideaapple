@@ -1,5 +1,7 @@
 .pio/
 .vscode/
 dist/
+_site/
 *.bin
 *.elf
+.DS_Store
