@@ -1,0 +1,57 @@
+name: AC compatibility report
+description: Tell us whether mideaapple worked with your AC — builds out the known-working list
+title: "[AC] <brand> <model> — works / doesn't"
+labels: ["compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing! Reports here grow the compatibility list in the README.
+  - type: input
+    id: brand
+    attributes:
+      label: Brand
+      placeholder: e.g. Midea, Comfee', Rotenso, Carrier, Kaisai…
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model number
+      placeholder: e.g. MSAGBU-09HRFN8
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      options:
+        - Works fully (temps + all controls)
+        - Works partially
+        - Doesn't work
+    validations:
+      required: true
+  - type: dropdown
+    id: port
+    attributes:
+      label: Dongle port on the AC
+      options:
+        - USB-A shaped bay
+        - 4-pin JST header
+        - No UART bay (IR-only)
+        - Not sure
+  - type: dropdown
+    id: swap
+    attributes:
+      label: UART pin orientation
+      options:
+        - Default (no swap needed)
+        - Needed GET /set?swap=1
+        - N/A
+  - type: textarea
+    id: notes
+    attributes:
+      label: What worked / what didn't
+      placeholder: |
+        Indoor + outdoor temp, Auto/Heat/Cool, Dry, Fan-only, fan speed, swing…
+        Paste any helpful serial lines ([tx-tune], Midea UART, [wifi]).
