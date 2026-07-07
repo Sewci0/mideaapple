@@ -1,6 +1,15 @@
 name: build
 
-on: [push, pull_request]
+on:
+  push:
+    paths-ignore: ['**.md', 'docs/**', 'LICENSE']
+  pull_request:
+    paths-ignore: ['**.md', 'docs/**', 'LICENSE']
+
+# Cancel a running build when a newer commit is pushed to the same ref.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -22,7 +31,7 @@ jobs:
           restore-keys: pio-${{ runner.os }}-
 
       - name: Install PlatformIO
-        run: pip install --upgrade platformio
+        run: pip install platformio==6.1.19   # pinned to match the pinned platform/libs
 
       - name: Build firmware
         run: pio run -e esp32-c3-devkitm-1
